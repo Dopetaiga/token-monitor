@@ -4925,7 +4925,11 @@ function limitAccountContext(providerId) {
     providerEnabled: limitProviderEnabled(providerId), presentation: state.settings?.limitAccountPresentation?.[providerId] };
 }
 function renderProviderAccountLinks() {
-  const stats = state.stats;
+  // The previous snapshot can stay visible while a different Hub connects.
+  // Its pairs must never become actions for the new destination.
+  const snapshot = state.stats;
+  const source = snapshot?.snapshot?.source;
+  const stats = Number.isSafeInteger(source) && source === state.settings?.hubStatsSource ? snapshot : null;
   const links = stats?.limitAccountLinks || [];
   const candidates = stats?.limitAccountLinkCandidates || [];
   const providers = new Set([...links, ...candidates].map(row => row.provider));
@@ -4957,7 +4961,7 @@ function renderProviderAccountLinks() {
       accountLinkPanels.set(id, panel);
     }
     panel.update({
-      revision: stats.syncSettingsRevisions?.limitAccountLinks,
+      source, revision: stats.syncSettingsRevisions?.limitAccountLinks,
       links: links.filter(pair => pair.provider === id),
       candidates: candidates.filter(row => row.provider === id),
       labels: state.settings?.limitAccountPresentation?.[id]?.labels || {},

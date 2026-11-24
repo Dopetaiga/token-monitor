@@ -26,9 +26,6 @@ const { antigravityConversationSummaryCandidates } = require('./providers/antigr
 const { cursorDesktopWatchRoots, isCursorDesktopStateWrite } = require('./providers/cursor/desktopState');
 const { catpawDatabaseName } = require('./providers/catpaw/paths');
 const { isDshSessionLogName } = require('./providers/dsh/sessionFiles');
-const {
-  isReasonixNativeSessionSidecar, reasonixNativeSessionWatchRoots
-} = require('./providers/reasonix/watchPaths');
 const { SELF_SYNC_KINDS } = require('./selfSyncThrottle');
 
 // A volume root already ends with the platform separator ("/" or "D:\"), so
@@ -139,13 +136,6 @@ function watchClientRootsForClients(clientsCsv, options = {}) {
     const summaryDirs = antigravitySummaryWatchSources(options).map(({ dir }) => dir).filter(dirExists);
     if (acpDirs.length > 0 || summaryDirs.length > 0) {
       rootsByClient.antigravity = [...new Set([...(rootsByClient.antigravity || []), ...acpDirs, ...summaryDirs])];
-    }
-  }
-  if (enabled.has('reasonix')) {
-    const nativeRoots = reasonixNativeSessionWatchRoots(options);
-    const existingNativeRoots = nativeRoots.filter(dirExists);
-    if (existingNativeRoots.length > 0) {
-      rootsByClient.reasonix = [...new Set([...(rootsByClient.reasonix || []), ...existingNativeRoots])];
     }
   }
   return rootsByClient;
@@ -613,22 +603,6 @@ function watchPolicyEntries(clientsCsv, options = {}) {
       bound('antigravity', [dir], directChildOnly((child) => child === name || child === `${name}-wal`));
     }
   }
-
-  const reasonixEnabled = String(clientsCsv || '').split(',').map((value) => value.trim().toLowerCase()).includes('reasonix');
-  bound(
-    'reasonix',
-    reasonixEnabled ? reasonixNativeSessionWatchRoots(options).filter(dirExists) : [],
-    (_parts, resolved) => {
-      if (isReasonixNativeSessionSidecar(resolved)) return false;
-      try {
-        if (fs.statSync(resolved).isDirectory()) return false;
-      } catch (_) {
-        // A removed sidecar is still delivered by chokidar; other removed
-        // files do not need to invalidate the native-session cache.
-      }
-      return true;
-    }
-  );
 
   // Prime's sessionDir may be cwd or the whole home. Its normal root sessions
   // are direct JSONL files; RLM transcripts are artifacts/<parent>/sub-*/*.jsonl.

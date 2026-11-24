@@ -94,13 +94,6 @@ const { createProcessStartBatch } = require('./processStarts');
 const { catpawSourcesFingerprint } = require('./providers/catpaw/paths');
 const { readLocalUsageView, resolveLocalUsagePricing } = require('./providers/codex/localUsage');
 const { createLocalUsageSource } = require('./providers/codex/localUsageSource');
-const {
-  createReasonixNativeSessionCache,
-  isReasonixNativeSessionPath,
-  isReasonixNativeSessionSidecar,
-  reasonixNativeSessionWatchRoots,
-  emptyNativeView
-} = require('./providers/reasonix/sessions');
 const { hostOsInfo, normalizeOsInfo } = require('./osVersion');
 const { hostDeviceKind } = require('./deviceHardware');
 const {
@@ -1890,25 +1883,6 @@ async function collectUsageOnce(options) {
   // The request ledger is this source's archive. A second per-session archive
   // would resurrect its contribution after a native rollout takes precedence.
   if (codexLocalView) summary.codexLocalSessionKeys = codexLocalView.sessionKeys;
-  if (options.reasonixNativeSessionsEnabled === true && trackedClientSet.has('reasonix')) {
-    try {
-      const nativeCache = options.reasonixNativeSessionCache || createReasonixNativeSessionCache({
-        env: options.env || process.env,
-        homeDir: options.homeDir || os.homedir(),
-        platform: platformValue,
-        cwdDir: options.cwdDir || process.cwd(),
-        projectIdentity
-      });
-      const nativeView = nativeCache.getView({ now: collectedAt, projectsEnabled, allTimeSince });
-      summary.nativeSessions = nativeView.sessions;
-      summary.nativeProjects = nativeView.projects;
-    } catch (error) {
-      if (typeof options.logger === 'function') options.logger(`reasonix native session scan failed: ${error.message}`);
-      const empty = emptyNativeView();
-      summary.nativeSessions = empty.sessions;
-      summary.nativeProjects = empty.projects;
-    }
-  }
   if (typeof options.onAnchorComputed === 'function') {
     // Reuse the existing catalog-title ledger (historically named t3Titles)
     // for summary overrides too. Provenance never enters published rows.
@@ -2381,16 +2355,6 @@ function startCollector(options) {
   let startBarrier = options.startBarrier ? Promise.resolve(options.startBarrier) : null;
   let cursorRestartRead = null;
   const trackedClients = new Set(normalizeClientsCsv(clients).split(',').filter(Boolean));
-  const reasonixNativeSessionsEnabled = options.reasonixNativeSessionsEnabled === true;
-  const reasonixNativeSessionCache = reasonixNativeSessionsEnabled && trackedClients.has('reasonix')
-    ? options.reasonixNativeSessionCache || createReasonixNativeSessionCache({
-      env: options.env || process.env,
-      homeDir: options.homeDir || os.homedir(),
-      platform: options.platform || process.platform,
-      cwdDir: options.cwdDir || process.cwd(),
-      projectIdentity
-    })
-    : null;
   const deviceOsInfo = options.osInfo === undefined
     ? hostOsInfo()
     : normalizeOsInfo(options.osInfo);
@@ -2867,8 +2831,6 @@ function startCollector(options) {
         } : null,
         forceSelfSync: tickOptions.forceSelfSync ?? null,
         sourceSelfSync: tickOptions.sourceSelfSync ?? null,
-        reasonixNativeSessionsEnabled,
-        reasonixNativeSessionCache,
         codexLocalUsageStore: codexLocalSource?.store || options.codexLocalUsageStore,
         onCodexLocalUsageComputed: (view) => {
           if (visibilityRevision !== codexVisibilityRevision) return;
@@ -3542,18 +3504,6 @@ function startCollector(options) {
         pendingActivityRevision = pendingActivityRevision === null
           ? activityRevision
           : Math.max(pendingActivityRevision, activityRevision);
-      }
-      if (
-        reasonixNativeSessionCache
-        && isReasonixNativeSessionSidecar(filePath)
-        && isReasonixNativeSessionPath(
-          filePath,
-          typeof reasonixNativeSessionCache.sessionRoots === 'function'
-            ? reasonixNativeSessionCache.sessionRoots()
-            : reasonixNativeSessionWatchRoots(watchOptions)
-        )
-      ) {
-        reasonixNativeSessionCache.invalidate(filePath);
       }
       for (const client of clientsForWatchPath(filePath, sourceSyncRootsByClient, attributionIgnores)) {
         // Catalog changes refresh labels, not the RPC usage cache.
